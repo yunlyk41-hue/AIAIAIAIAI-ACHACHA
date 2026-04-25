@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>아차차 박사 v4.6</title>
+    <style>
+        body { font-family: 'Apple SD Gothic Neo', sans-serif; background: #ffffff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
+        #app { width: 450px; height: 750px; background: white; border: 1px solid #eee; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        .header { background: #1a2a4e; color: #ffffff; padding: 15px; text-align: center; font-weight: 800; font-size: 1.2rem; }
+        .mode-selector { background: #0d162b; padding: 10px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+        .mode-btn { background: #2c3e50; color: #95a5a6; border: none; padding: 8px 2px; border-radius: 5px; cursor: pointer; font-size: 0.75rem; transition: 0.3s; }
+        .mode-btn.active { background: #ffffff; color: #1a2a4e; font-weight: bold; }
+        #chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; background: #ffffff; }
+        .msg { padding: 12px 16px; border-radius: 10px; max-width: 85%; font-size: 0.95rem; line-height: 1.5; }
+        .ai { background: #f8f9fa; align-self: flex-start; border: 1px solid #eee; color: #333; }
+        .user { background: #1a2a4e; align-self: flex-end; color: #fff; }
+        .input-area { display: flex; padding: 15px; background: white; border-top: 1px solid #eee; gap: 10px; }
+        input { flex: 1; border: 1px solid #ddd; padding: 12px; border-radius: 8px; outline: none; }
+        button#submit-btn { background: #1a2a4e; color: white; border: none; padding: 0 20px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="header">아차차 박사 v4.6</div>
+    <div class="mode-selector">
+        <button class="mode-btn active" id="rx-mode">처방</button>
+        <button class="mode-btn" id="chat-mode">대화</button>
+        <button class="mode-btn" id="rsp-mode">가위바위보</button>
+        <button class="mode-btn" id="luck-mode">운세</button>
+        <button class="mode-btn" id="past-mode">전생</button>
+        <button class="mode-btn" id="psy-mode">심리</button>
+    </div>
+    <div id="chat-box"><div class="msg ai">진료를 시작합니다. 현재 증상을 말씀하십시오.</div></div>
+    <div class="input-area">
+        <input type="text" id="user-input" placeholder="메시지를 입력하세요..." autocomplete="off">
+        <button id="submit-btn">분석</button>
+    </div>
+</div>
+
+<script type="module">
+    import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
+
+    // 박사님이 제공하신 새로운 API 키
+    const API_KEY = "AIzaSyAX0AuDiTkN7al4tsvvPBk3OIG7HPXrRrg"; 
+    const genAI = new GoogleGenerativeAI(API_KEY);
+
+    let currentMode = "처방";
+
+    const inputField = document.getElementById('user-input');
+    const submitBtn = document.getElementById('submit-btn');
+    const chatBox = document.getElementById('chat-box');
+
+    const modes = {
+        "처방": document.getElementById('rx-mode'),
+        "대화": document.getElementById('chat-mode'),
+        "가위바위보": document.getElementById('rsp-mode'),
+        "운세": document.getElementById('luck-mode'),
+        "전생": document.getElementById('past-mode'),
+        "심리": document.getElementById('psy-mode')
+    };
+
+    Object.keys(modes).forEach(key => {
+        modes[key].addEventListener('click', () => {
+            currentMode = key;
+            Object.values(modes).forEach(btn => btn.classList.remove('active'));
+            modes[key].classList.add('active');
+            
+            let systemMsg = `[시스템] ${currentMode} 모드 가동.`;
+            if(currentMode === "처방") systemMsg += " 현재 증상을 상세히 말씀하십시오.";
+            else if(currentMode === "운세") systemMsg += " 생년월일을 입력하면 불길한 예언을 해드리지요.";
+            else if(currentMode === "전생") systemMsg += " 당신의 특징이나 이름을 말하면 전생의 죄를 알려드리겠습니다.";
+            else if(currentMode === "심리") systemMsg += " 질문을 하나 던질 테니 대답해 보십시오.";
+            
+            chatBox.innerHTML += `<div class="msg ai" style="background:#f0f0f0;">${systemMsg}</div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+        });
+    });
+
+    const forbiddenKeywords = ["사망", "죽음", "시한부", "자살", "살해"];
+
+    async function processDiagnosis() {
+        const userText = inputField.value.trim();
+        if (!userText || submitBtn.disabled) return;
+
+        if (forbiddenKeywords.some(key => userText.includes(key))) {
+            chatBox.innerHTML += `<div class="msg user">${userText}</div>`;
+            chatBox.innerHTML += `<div class="msg ai" style="color: #ff0000; font-weight: bold;">[경고] 그 영역은 제가 담당하지 않습니다. ACCESS DENIED.</div>`;
+            inputField.value = "";
+            chatBox.scrollTop = chatBox.scrollHeight;
+            return;
+        }
+
+        submitBtn.disabled = true;
+        chatBox.innerHTML += `<div class="msg user">${userText}</div>`;
+        inputField.value = "";
+        
+        const aiMsgDiv = document.createElement('div');
+        aiMsgDiv.className = "msg ai";
+        aiMsgDiv.innerHTML = `처리 중...`;
+        chatBox.appendChild(aiMsgDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+
+        try {
+            let sysInst = "";
+            if (currentMode === "처방") sysInst = "너는 실제 존재하는 약물을 기괴하게 처방하는 '아차차 박사'야. 반드시 '실제로 처방되는 약 이름'을 하나 선택해서 2~3줄로 짧게 대답해. 죽음에 이르게 하지는 말고, 적당히 고통스럽거나 기묘한 신체 변화를 겪게 해줘.";
+            else if (currentMode === "대화") sysInst = "너는 냉소적인 '아차차 박사'야. 예리하고 오싹한 조언을 2~3줄로 짧게 해줘.";
+            else if (currentMode === "가위바위보") sysInst = "너는 사용자와 가위바위보를 하는 오싹한 박사야. 승패 결과와 함께 기괴한 심리전을 2줄로 짧게 해줘.";
+            else if (currentMode === "운세") sysInst = "너는 기이한 예언을 하는 박사야. 생년월일을 바탕으로 오늘의 운세를 불길하게 2줄 예언해줘.";
+            else if (currentMode === "전생") sysInst = "너는 업보를 읽는 박사야. 전생에 어떤 죄를 지었는지 2줄로 폭로해줘.";
+            else if (currentMode === "심리") sysInst = "너는 내면의 어둠을 캐는 박사야. 기괴한 양자택일 질문을 던지고 뒤틀린 욕망을 2줄로 분석해줘.";
+
+            const model = genAI.getGenerativeModel({ 
+                model: "gemini-3-flash-preview", 
+                systemInstruction: sysInst
+            });
+
+            const result = await model.generateContent(userText);
+            const response = await result.response;
+            const fullText = response.text().trim();
+
+            aiMsgDiv.innerHTML = "";
+            let idx = 0;
+            const typing = setInterval(() => {
+                if (idx < fullText.length) {
+                    aiMsgDiv.innerHTML += fullText.charAt(idx);
+                    idx++;
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                } else {
+                    clearInterval(typing);
+                    submitBtn.disabled = false;
+                }
+            }, 30);
+            
+        } catch (e) {
+            aiMsgDiv.innerHTML = `[Error] 시스템 과부하. (API 키 권한 확인 필요)`;
+            submitBtn.disabled = false;
+        }
+    }
+
+    submitBtn.addEventListener('click', processDiagnosis);
+    inputField.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.isComposing) processDiagnosis();
+    });
+</script>
+</body>
+</html>
